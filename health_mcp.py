@@ -26,6 +26,11 @@ register_fda_tools(mcp)
 register_analytics_tools(mcp)
 register_sync_tools(mcp)
 register_webhook_tools(mcp)
+
+# Install the compact health snapshot last so the established get_health_snapshot
+# name remains available while its response is bounded for LLM context windows.
+import compact_tools  # noqa: F401,E402
+
 init_db()
 
 
