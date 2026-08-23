@@ -3,7 +3,6 @@ import os
 import secrets
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -34,8 +33,6 @@ AUTH_URL = "https://cloud.ouraring.com/oauth/authorize"
 TOKEN_URL = "https://api.ouraring.com/oauth/token"
 API_BASE = "https://api.ouraring.com/v2/usercollection"
 
-# Oura V2 read collections. These are intentionally exposed through one generic
-# tool so new/read-only collections can be used without waiting for a new MCP tool.
 COLLECTIONS = {
     "personal_info": "personal_info",
     "daily_activity": "daily_activity",
@@ -65,22 +62,22 @@ DAILY_COLLECTIONS = {
     "rest_mode_period",
 }
 TIME_SERIES_COLLECTIONS = {"heartrate", "ring_battery_level"}
-NO_DATE_COLLECTIONS = {"personal_info"}
-
-# Oura recommends keeping time-series requests bounded; 30 days is a safe maximum
-# for heart-rate/battery requests and prevents accidental giant LLM responses.
 TIMESERIES_MAX_DAYS = 30
-DEFAULT_MAX_RECORDS = 5000
+DEFAULT_MAX_RECORDS = 500
 
 mcp = FastMCP(
     "Oura Personal Health",
     instructions=(
         "You have read-only access to the user's own Oura Ring V2 data. "
-        "Use get_health_snapshot for broad trend questions. Use get_oura_data for "
-        "specific metrics, detailed sleep, heart-rate/HRV, workouts, sessions, tags, "
-        "stress, resilience, SpO2, cardiovascular age, VO2 max, rest mode, ring "
-        "configuration, and battery data. Always request a bounded date/time range "
-        "when practical. The service automatically follows Oura pagination."
+        "For broad health questions, averages, trends, comparisons, sleep debt, "
+        "regularity, anomalies, or correlations, use the compact server-side "
+        "analytics tools such as get_health_snapshot, get_recent_activity_and_recovery, "
+        "find_metric_trends, compare_periods, calculate_sleep_debt, "
+        "calculate_sleep_regularity, find_anomalies, and correlate_oura_metrics. "
+        "These tools perform calculations on the server and return only small summaries. "
+        "Do NOT use get_oura_data for broad questions. Use get_oura_data only when the "
+        "user explicitly asks for detailed/raw records or a collection not covered by "
+        "an analytics endpoint. Always keep raw requests bounded and use fields when practical."
     ),
     json_response=True,
 )
@@ -192,7 +189,7 @@ def _datetime_range(start_datetime: str | None, end_datetime: str | None, hours:
 
 
 def _paginate(collection: str, params: dict[str, Any], max_records: int) -> dict[str, Any]:
-    """Fetch all pages using Oura's next_token cursor."""
+    """Fetch all pages using Oura's next_token cursor, bounded by max_records."""
     all_data: list[Any] = []
     next_token: str | None = params.get("next_token")
     pages = 0
@@ -247,7 +244,6 @@ def _fetch_collection(
         if latest is not None:
             params["latest"] = str(bool(latest)).lower()
     elif collection == "ring_configuration":
-        # Ring configuration is cursor-paginated and does not need a date range.
         pass
     elif collection == "personal_info":
         pass
@@ -344,6 +340,7 @@ def list_available_data() -> dict[str, Any]:
             "Oura pagination is followed automatically.",
             "Use fields for sparse responses when you know the required fields.",
             "Use max_records to prevent excessively large model context payloads.",
+            "Prefer compact analytics tools for questions about averages, trends, comparisons, and correlations.",
         ],
     }
 
@@ -375,9 +372,9 @@ def get_oura_data(
     latest: bool | None = None,
     fields: str | None = None,
     next_token: str | None = None,
-    max_records: int = DEFAULT_MAX_RECORDS,
+    max_records: int = 500,
 ) -> dict[str, Any]:
-    """Read any supported Oura V2 collection. Dates are YYYY-MM-DD; datetimes are ISO-8601."""
+    """Advanced raw Oura collection access. Use only for explicit detailed-data requests; prefer analytics tools for summaries."""
     if data_type not in COLLECTIONS:
         raise ValueError(f"Unsupported data_type. Available: {', '.join(sorted(COLLECTIONS))}")
     result = _fetch_collection(
@@ -386,52 +383,6 @@ def get_oura_data(
     )
     result["data_type"] = data_type
     return result
-
-
-@mcp.tool()
-def get_health_snapshot(days: int = 7, include_detail: bool = False) -> dict[str, Any]:
-    """Get a compact multi-metric health snapshot for AI trend analysis."""
-    days = max(1, min(int(days), 90))
-    start, end = _date_range(None, None, days=days)
-    names = [
-        "daily_activity", "daily_sleep", "daily_readiness", "daily_stress",
-        "daily_resilience", "daily_spo2", "daily_cardiovascular_age", "vO2_max",
-    ]
-    if include_detail:
-        names += ["sleep", "sleep_time", "workout", "session", "enhanced_tag", "rest_mode_period"]
-
-    output: dict[str, Any] = {"start_date": start, "end_date": end, "data": {}, "errors": {}}
-
-    def fetch(name: str) -> tuple[str, Any]:
-        try:
-            return name, _fetch_collection(name, start_date=start, end_date=end, max_records=10000)
-        except Exception as exc:
-            return name, {"error": f"{type(exc).__name__}: {exc}"}
-
-    with ThreadPoolExecutor(max_workers=min(8, len(names))) as executor:
-        futures = [executor.submit(fetch, name) for name in names]
-        for future in as_completed(futures):
-            name, payload = future.result()
-            if isinstance(payload, dict) and "error" in payload:
-                output["errors"][name] = payload["error"]
-            else:
-                output["data"][name] = payload
-    return output
-
-
-@mcp.tool()
-def get_recent_activity_and_recovery(days: int = 14) -> dict[str, Any]:
-    """Fetch activity, sleep, readiness, stress, resilience, workouts, tags and rest-mode data for correlation analysis."""
-    days = max(1, min(int(days), 90))
-    start, end = _date_range(None, None, days=days)
-    names = ["daily_activity", "daily_sleep", "daily_readiness", "daily_stress", "daily_resilience", "workout", "enhanced_tag", "rest_mode_period"]
-    output: dict[str, Any] = {"start_date": start, "end_date": end, "data": {}, "errors": {}}
-    for name in names:
-        try:
-            output["data"][name] = _fetch_collection(name, start_date=start, end_date=end, max_records=10000)
-        except Exception as exc:
-            output["errors"][name] = f"{type(exc).__name__}: {exc}"
-    return output
 
 
 @mcp.tool()
@@ -445,7 +396,7 @@ def disconnect_oura() -> str:
 def main() -> None:
     if not ENV_FILE.exists() or not _configured():
         print(f"Oura configuration is missing or incomplete: {ENV_FILE}")
-        print("Run start-oura.ps1 to create/open the configuration file, then restart.")
+        print("Run start-oura.ps1 to create/open the configuration file, then restart the service.")
         raise SystemExit(2)
     app = mcp.streamable_http_app()
     print(f"Oura Personal Health MCP: http://{HOST}:{PORT}/mcp")
