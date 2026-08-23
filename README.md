@@ -1,116 +1,238 @@
-# Personal Health Data / Oura MCP
+# Personal Health MCP
 
-A local-only Oura API V2 service for giving your local AI assistant access to your own Oura Ring data.
+A local-first MCP server for connecting personal health data to AI assistants. The project is designed to work with Oura Ring data today, while keeping the architecture extensible for additional health and medical-reference integrations.
 
-The service uses Oura OAuth 2.0 and exposes the authorized read-only data through MCP Streamable HTTP. Oura documents OAuth 2.0 as the supported authentication method and provides a server-side flow with refresh tokens. citeturn0search0turn0search2
+The service is intended for personal analytics and research. It keeps private credentials, OAuth tokens, and personal health records on the user's machine.
+
+## Features
+
+- Oura API V2 OAuth 2.0 integration
+- Automatic token refresh
+- Read-only Oura data access
+- Automatic Oura pagination
+- Bounded time-series queries
+- Compact health snapshots for AI models
+- Personal health analytics and trend tools
+- Local medical/reference integrations
+- MCP Streamable HTTP
+- Configurable bind address and port
+- Single PowerShell launcher for setup, start, update, status, and stop
+- Local credential/token storage excluded from Git
+- Optional webhook architecture for deployments with public HTTPS ingress
 
 ## Architecture
 
 ```text
 Oura Cloud
     |
-    | OAuth 2.0
+    | OAuth 2.0 / API V2
     v
-127.0.0.1:8765
+Local Personal Health MCP
+    |
+    +--> SQLite / local state
+    |
+    +--> Analytics
+    |
+    +--> Medical/reference APIs
     |
     | MCP Streamable HTTP
     v
-cptr / Open WebUI MCP client
+cptr / Open WebUI / other MCP clients
     |
     v
-Local Qwen / Ornith / other local models
+Local or remote AI model
 ```
 
-Port **8765** is used intentionally. Port **8000 is not used** by this service.
+By default the service binds to `127.0.0.1:8765`. Port 8000 is not reserved by this project and can be used by another local service such as llama.cpp.
 
 ## Windows quick start
 
-Run:
+Clone the repository, open PowerShell in the repository directory, and run:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
-& "C:\AI\Personal-health-data\start-oura.ps1"
+.\start-health.ps1
 ```
 
-On first startup the script clones/updates this repository, creates a Python virtual environment, creates `oura.env` if necessary, opens it in Notepad, installs dependencies, and starts the service. If `oura.env` already exists, it is preserved and reused.
+The launcher automatically:
 
-The local credential file is ignored by Git and is never committed. OAuth tokens and temporary OAuth state under `data/` are also ignored. fileciteturn22file0L2-L2
+1. Checks the local installation.
+2. Creates a Python virtual environment.
+3. Installs dependencies.
+4. Creates `oura.env` from the example configuration when needed.
+5. Opens the configuration file so you can enter your Oura credentials.
+6. Starts the MCP server.
+7. Checks the health endpoint.
+8. Opens Oura OAuth when authorization is required.
+9. Prints the MCP endpoint for your client.
 
-## Oura application settings
+If configuration and OAuth tokens already exist, they are reused.
+
+## Configuration
+
+All normal server configuration is in `oura.env`.
+
+```env
+OURA_CLIENT_ID=...
+OURA_CLIENT_SECRET=...
+OURA_REDIRECT_URI=http://127.0.0.1:8765/oauth/callback
+OURA_SCOPES=email personal daily heartrate workout tag session spo2Daily
+OURA_HOST=127.0.0.1
+OURA_PORT=8765
+OURA_TOKEN_FILE=data/tokens.json
+```
+
+### Changing the port
+
+Change:
+
+```env
+OURA_PORT=8765
+```
+
+to any unused local port, for example:
+
+```env
+OURA_PORT=9100
+```
+
+The launcher and Python service automatically use the configured port. If you change the port, update `OURA_REDIRECT_URI` to match and add the exact new callback URL to your Oura application.
+
+The service does not require port 8000.
+
+### Changing the bind address
+
+For normal personal use, keep:
+
+```env
+OURA_HOST=127.0.0.1
+```
+
+This prevents accidental LAN exposure. Only change it when you intentionally need network access and understand the security implications.
+
+## Launcher commands
+
+The repository intentionally has one user-facing PowerShell script:
+
+```powershell
+.\start-health.ps1
+```
+
+Start:
+
+```powershell
+.\start-health.ps1
+```
+
+Re-run setup/configuration:
+
+```powershell
+.\start-health.ps1 -Setup
+```
+
+Pull the latest repository code and dependencies without restarting:
+
+```powershell
+.\start-health.ps1 -Update
+```
+
+Check status:
+
+```powershell
+.\start-health.ps1 -Status
+```
+
+Stop the service:
+
+```powershell
+.\start-health.ps1 -Stop
+```
+
+The launcher is location-independent and does not assume `C:\AI` or another fixed installation directory.
+
+## Oura application setup
+
+Create an Oura API application and configure its Redirect URI to exactly match the local value in `oura.env`.
 
 Default callback:
 
-`http://127.0.0.1:8765/oauth/callback`
+```text
+http://127.0.0.1:8765/oauth/callback
+```
 
-It must exactly match a Redirect URI configured in your Oura application. Oura requires the redirect URI used in authorization/token exchange to match the registered URI. citeturn0search0
+The application should be granted the Oura scopes required by the data you want to access. The example configuration lists the currently supported read scopes used by this project.
 
-The current Oura V2 documentation lists these OAuth scopes: `email`, `personal`, `daily`, `heartrate`, `workout`, `tag`, `session`, and `spo2Daily`. citeturn0search0turn0search2
+After the first launch, the browser-based OAuth flow stores tokens locally. Tokens are never intended to be committed to the repository.
 
-The example configuration requests all of them. If Oura's application page grants fewer scopes, edit `OURA_SCOPES` accordingly and re-authorize.
+## MCP endpoint
 
-## MCP connection
+Default:
 
-Connect cptr/Open WebUI to:
+```text
+http://127.0.0.1:8765/mcp
+```
 
-`http://127.0.0.1:8765/mcp`
+Health check:
 
-## MCP tools
+```text
+http://127.0.0.1:8765/health
+```
 
-- `get_connection_status` — authorization state, expiry, scopes and endpoint without exposing secrets
-- `list_available_data` — complete list of supported Oura collections
-- `authorize_oura` — generates an OAuth authorization URL
-- `get_personal_info` — personal profile data
-- `get_oura_data` — generic access to every supported Oura V2 read collection, with date/datetime ranges, sparse fields, pagination, latest-sample mode and record limits
-- `get_health_snapshot` — compact multi-metric snapshot for AI analysis
-- `get_recent_activity_and_recovery` — combined recovery/activity/workout/tag/rest-mode data
-- `disconnect_oura` — removes locally stored OAuth tokens
+Use the configured host and port if you changed them.
 
-## Oura data exposed
+## Oura data
 
-The service covers the current read collections used by Oura V2, including:
+The Oura layer is designed around Oura API V2 read collections, including personal information, daily activity, sleep, readiness, stress, resilience, SpO2, cardiovascular age, VO2 max, sleep details, heart rate, workouts, sessions, tags, enhanced tags, rest mode, ring configuration, and battery data where the authorized Oura application exposes the corresponding collection.
 
-- `personal_info`
-- `daily_activity`
-- `daily_sleep`
-- `daily_readiness`
-- `daily_stress`
-- `daily_resilience`
-- `daily_spo2`
-- `daily_cardiovascular_age`
-- `vO2_max`
-- `sleep`
-- `sleep_time`
-- `heartrate`
-- `workout`
-- `session`
-- `tag`
-- `enhanced_tag`
-- `rest_mode_period`
-- `ring_configuration`
-- `ring_battery_level`
+The generic Oura data interface supports date/datetime ranges, pagination, record limits, and targeted collection access. Heart-rate and other time-series requests are bounded to prevent accidentally filling an AI model's context window.
 
-Oura's current V2 documentation describes daily summaries, time-series measurements, sleep, activity, readiness, heart rate/HRV, workouts, tags, sessions, SpO2, stress and specialized metrics. citeturn0search2turn3search2
+## Analytics
 
-### Pagination
+The project includes a local analytics layer intended to reduce the amount of raw data that must be supplied to an AI model. It can support personal baselines, rolling trends, anomalies, correlations, period comparisons, sleep debt, sleep regularity, and related derived metrics.
 
-The service automatically follows Oura `next_token` pagination instead of returning only the first page. This is important for historical sleep, workouts, tags, sessions and other collections. A configurable `max_records` limit prevents an accidental LLM request from filling its entire context with data. Oura collections expose cursor pagination through `next_token`. citeturn3search8
+Prefer the compact health-analysis tools for broad questions and raw Oura collection access for targeted investigations.
 
-### Heart-rate and battery data
+## Medical/reference integrations
 
-Heart-rate and ring-battery queries use ISO-8601 datetimes and are bounded to 30 days per request to avoid oversized time-series requests. Ask the model for separate ranges when analyzing longer periods.
+The project can query public reference sources including biomedical literature and clinical terminology/reference services. These are external reference sources and are not a replacement for professional medical care.
 
-### Historical analysis
+Current integrations include sources such as PubMed/NCBI, MedlinePlus, ICD terminology, LOINC, RxTerms, NPI Registry, CMS Coverage, and FDA/openFDA where supported by the installed integration modules.
 
-The model can request up to 90 days through the built-in health-analysis helpers, or use `get_oura_data` for targeted ranges. The generic collection tool can retrieve larger historical ranges in bounded calls.
+Optional NCBI settings can be placed in `oura.env`:
 
-## Local-only design
+```env
+NCBI_EMAIL=you@example.com
+NCBI_API_KEY=your_key
+```
 
-The MCP server binds to `127.0.0.1`, so it is not intentionally exposed to your LAN or the Internet. Your Oura client secret and OAuth tokens stay on the machine and are excluded from Git. The intended consumer is your locally hosted AI stack.
+An NCBI API key is optional.
 
 ## Webhooks
 
-Oura currently recommends webhooks for update-driven integrations because they reduce polling and provide notifications when new data becomes available. A pure localhost service cannot directly receive Oura Cloud webhooks because the cloud service needs a publicly reachable HTTPS callback. This build therefore uses on-demand reads and is intentionally self-contained for your local setup. Webhook support can be added later if you decide to expose a secure HTTPS endpoint. citeturn0search2
+The local service is fully usable without public webhook ingress. Webhooks are an optional deployment feature for users who want Oura Cloud to notify the service when data changes.
 
-## API limitations
+A public HTTPS endpoint is required for Oura Cloud to reach a local machine. Do not expose the MCP service directly to the Internet. Use a secure tunnel/reverse proxy and expose only the intended webhook route.
 
-The service only exposes Oura's public V2 read collections. It does not invent access to data that Oura does not expose through a public read endpoint. Oura states that V2 is the current integration point and V1 has been sunset. citeturn0search2
+See `WEBHOOKS.md` for the deployment architecture.
+
+## Security and privacy
+
+Do not commit `oura.env`, OAuth tokens, local databases, or other personal health data.
+
+The repository's `.gitignore` is intended to exclude these files. The default configuration binds to localhost.
+
+The project is designed for read-only access to the user's own Oura data. Do not share OAuth credentials or tokens with other people or services.
+
+## Documentation
+
+- `CONFIGURATION.md` — configuration reference
+- `INSTALLATION.md` — installation and troubleshooting
+- `MCP_TOOLS.md` — MCP tools/resources
+- `INTEGRATIONS.md` — health and medical integrations
+- `WEBHOOKS.md` — optional webhook deployment
+- `SECURITY.md` — credential and privacy guidance
+- `DEVELOPMENT.md` — development notes
+
+## License
+
+See the repository license file. Third-party services and APIs remain subject to their own terms and agreements.
