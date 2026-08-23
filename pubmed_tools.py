@@ -112,11 +112,14 @@ def _one_sentence_summary(abstract: str) -> str | None:
     if not abstract:
         return None
     text = " ".join(abstract.split())
-    match = re.search(r".+?[.!?](?:\s|$)", text)
+    # Prefer a structured RESULTS/CONCLUSIONS sentence over an objective/background sentence.
+    labeled = re.findall(r"(?:RESULTS?|CONCLUSIONS?|FINDINGS?|KEY FINDINGS?):\s*(.+?)(?=(?:OBJECTIVES?|METHODS?|RESULTS?|CONCLUSIONS?|FINDINGS?|KEY FINDINGS?):|$)", text, flags=re.I)
+    candidate = labeled[-1] if labeled else text
+    match = re.search(r".+?[.!?](?:\s|$)", candidate)
     if match:
         sentence = match.group(0).strip()
     else:
-        sentence = text[:320].rstrip(" ,;:") + ("…" if len(text) > 320 else "")
+        sentence = candidate[:320].rstrip(" ,;:") + ("…" if len(candidate) > 320 else "")
     if len(sentence) > 360:
         sentence = sentence[:357].rsplit(" ", 1)[0] + "…"
     return sentence
