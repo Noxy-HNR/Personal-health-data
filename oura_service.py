@@ -374,12 +374,19 @@ def get_oura_data(
     next_token: str | None = None,
     max_records: int = 500,
 ) -> dict[str, Any]:
-    """Advanced raw Oura collection access. Use only for explicit detailed-data requests; prefer analytics tools for summaries."""
+    """Advanced RAW Oura collection access -- returns full, unsummarized records, not an
+    analysis. Use only for explicit detailed-data requests (e.g. "show me the raw sleep
+    record for last Tuesday"). For averages, trends, comparisons, or anomalies, use the
+    compact analytics tools (get_health_snapshot, find_metric_trends, compare_periods,
+    find_anomalies, etc.) instead -- they compute server-side and return small summaries.
+    max_records is capped at 2000 here regardless of what is requested; the internal sync
+    job that populates the local database is a separate, higher-limit code path."""
     if data_type not in COLLECTIONS:
         raise ValueError(f"Unsupported data_type. Available: {', '.join(sorted(COLLECTIONS))}")
+    capped_max_records = max(1, min(int(max_records), 2000))
     result = _fetch_collection(
         COLLECTIONS[data_type], start_date, end_date, start_datetime, end_datetime,
-        latest, fields, next_token, max_records,
+        latest, fields, next_token, capped_max_records,
     )
     result["data_type"] = data_type
     return result

@@ -67,9 +67,14 @@ def register_sync_tools(mcp):
         """Return local database statistics and last synchronization times."""
         init_db(); c=conn(); rows=c.execute('SELECT collection,COUNT(*) n,MAX(updated_at) updated FROM documents GROUP BY collection ORDER BY collection').fetchall(); events=c.execute('SELECT COUNT(*) n FROM webhook_events').fetchone()['n']; c.close(); return {'database':str(DB),'collections':[dict(r) for r in rows],'webhook_events':events}
     @mcp.tool()
-    def query_health_history(collection:str='daily_readiness',start_date:str|None=None,end_date:str|None=None,limit:int=500)->dict[str,Any]:
-        """Query locally cached Oura history without making an Oura API request."""
+    def query_health_history(collection:str='daily_readiness',start_date:str|None=None,end_date:str|None=None,limit:int=50)->dict[str,Any]:
+        """Query locally cached Oura history without making an Oura API request. Returns FULL
+        raw Oura documents, not a summary -- use only when you need actual record-level detail
+        (e.g. "what did my sleep record for August 3rd actually contain"). For averages, trends,
+        comparisons, or anomalies, use the compact analytics tools (get_health_snapshot,
+        find_metric_trends, compare_periods, find_anomalies, etc.) instead; they return small
+        aggregates and never raw records. limit is capped at 1000 regardless of what is requested."""
         init_db(); c=conn(); sql='SELECT object_id,day,start_time,end_time,payload,updated_at FROM documents WHERE collection=?'; args=[collection]
         if start_date: sql+=' AND (day>=? OR day IS NULL)'; args.append(start_date)
         if end_date: sql+=' AND (day<=? OR day IS NULL)'; args.append(end_date)
-        sql+=' ORDER BY COALESCE(day,start_time) DESC LIMIT ?'; args.append(max(1,min(limit,10000))); rows=c.execute(sql,args).fetchall(); c.close(); return {'collection':collection,'count':len(rows),'data':[dict(r, payload=json.loads(r['payload'])) for r in rows]}
+        sql+=' ORDER BY COALESCE(day,start_time) DESC LIMIT ?'; args.append(max(1,min(limit,1000))); rows=c.execute(sql,args).fetchall(); c.close(); return {'collection':collection,'count':len(rows),'data':[dict(r, payload=json.loads(r['payload'])) for r in rows]}

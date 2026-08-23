@@ -1,6 +1,5 @@
 from __future__ import annotations
 import os, xml.etree.ElementTree as ET
-from datetime import date
 from typing import Any
 import httpx
 NCBI="https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
@@ -37,22 +36,15 @@ def register_medical_tools(mcp):
     def medical_sources()->dict[str,Any]:
         """List medical reference sources available to the model."""
         return {"sources":[{"name":"PubMed/NCBI","tools":["search_pubmed","get_pubmed_article"],"auth":"optional NCBI email/API key"},{"name":"MedlinePlus","tools":["search_medlineplus","lookup_medlineplus_code"],"auth":"none"},{"name":"NLM Clinical Tables","tools":["lookup_icd10","lookup_icd11","search_medical_conditions","search_drugs","search_loinc"],"auth":"none"},{"name":"NPPES NPI Registry","tools":["search_npi_registry"],"auth":"none"},{"name":"CMS Medicare Coverage Database","tools":["cms_coverage_whats_new","cms_national_coverage_annual"],"auth":"none for these public endpoints"}],"note":"Reference information only; preserve source attribution and dates."}
+    # search_pubmed lives in pubmed_tools.py now -- that version ranks results
+    # server-side and returns an extractive one-sentence summary instead of a
+    # full abstract dump. Having a second definition here meant health_mcp.py
+    # had to mcp.remove_tool() this name at startup to paper over the clash.
     @mcp.tool()
-    def search_pubmed(query:str,max_results:int=10,years:int|None=None,sort:str="relevance")->dict[str,Any]:
-        """Search PubMed biomedical literature."""
-        if not query.strip():raise ValueError("query is required")
-        term=query.strip()
-        if years:
-            cutoff=date.today().year-max(1,min(int(years),100)); term=f"({term}) AND ({cutoff}:3000[dp])"
-        sort=sort if sort in {"relevance","date","pub date","first author","journal"} else "relevance"
-        s=get(f"{NCBI}/esearch.fcgi",ncbi({"db":"pubmed","term":term,"retmode":"json","retmax":max(1,min(int(max_results),50)),"sort":sort})).json()["esearchresult"]
-        ids=s.get("idlist",[])
-        if not ids:return {"query":query,"count":int(s.get("count",0)),"results":[],"source":"PubMed/NCBI"}
-        x=get(f"{NCBI}/esummary.fcgi",ncbi({"db":"pubmed","id":",".join(ids),"retmode":"xml"})).text
-        return {"query":query,"count":int(s.get("count",0)),"results":summaries(x),"source":"PubMed/NCBI","source_url":"https://pubmed.ncbi.nlm.nih.gov/"}
-    @mcp.tool()
-    def get_pubmed_article(pmid:str,include_abstract:bool=True)->dict[str,Any]:
-        """Get PubMed citation metadata and optional abstract for a PMID."""
+    def get_pubmed_article(pmid:str,include_abstract:bool=True,max_abstract_chars:int=3000)->dict[str,Any]:
+        """Get PubMed citation metadata and optional abstract for a PMID. The abstract is
+        truncated to max_abstract_chars (default 3000) so an explicit single-article lookup
+        can't dump an unbounded amount of text into context."""
         if not str(pmid).isdigit():raise ValueError("pmid must be numeric")
         pmid=str(pmid); x=get(f"{NCBI}/esummary.fcgi",ncbi({"db":"pubmed","id":pmid,"retmode":"xml"})).text
         out={"pmid":pmid,"citation":(summaries(x) or [None])[0],"source":"PubMed/NCBI","url":f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"}
@@ -61,7 +53,11 @@ def register_medical_tools(mcp):
             for n in root.findall(".//AbstractText"):
                 t="".join(n.itertext()).strip()
                 if t:parts.append(f"{n.attrib.get('Label')}: {t}" if n.attrib.get("Label") else t)
-            out["abstract"]="\n\n".join(parts) if parts else None
+            abstract="\n\n".join(parts) if parts else None
+            limit=max(200,min(int(max_abstract_chars),20000))
+            if abstract and len(abstract)>limit:
+                abstract=abstract[:limit].rsplit(" ",1)[0]+"… [truncated]"
+            out["abstract"]=abstract
         return out
     @mcp.tool()
     def search_medlineplus(query:str,max_results:int=10,language:str="en")->dict[str,Any]:
