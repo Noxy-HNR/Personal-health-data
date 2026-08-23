@@ -6,6 +6,12 @@ from analytics_tools import register_analytics_tools
 from sync_db import register_sync_tools, init_db
 from webhook_tools import register_webhook_tools
 
+# Harden Oura OAuth before any tools can make API requests. Oura refresh tokens
+# are single-use, so concurrent refreshes can otherwise invalidate each other.
+import auth_hardening  # noqa: E402
+
+auth_hardening.install()
+
 
 def _clinical_search(path, query, max_results, sf, df, ef=None):
     params = {
