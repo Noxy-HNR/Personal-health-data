@@ -14,6 +14,7 @@ medical_tools.register_medical_tools(mcp)
 register_fda_tools(mcp)
 register_analytics_tools(mcp)
 
+
 def main()->None:
     import uvicorn
     app=mcp.streamable_http_app()
@@ -21,5 +22,6 @@ def main()->None:
     print(f"Health check: http://{HOST}:{PORT}/health")
     print(f"Oura OAuth: http://{HOST}:{PORT}/oauth/start")
     uvicorn.run(app,host=HOST,port=PORT,log_level="info")
+
 
 if __name__=="__main__": main()
