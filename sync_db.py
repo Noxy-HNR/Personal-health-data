@@ -1,6 +1,6 @@
 """SQLite synchronization layer for Oura V2 documents."""
 from __future__ import annotations
-import json, sqlite3, threading
+import hashlib, json, sqlite3, threading
 from datetime import date,timedelta
 from pathlib import Path
 from typing import Any
@@ -16,7 +16,12 @@ def init_db():
         c=conn(); c.executescript('''CREATE TABLE IF NOT EXISTS documents(collection TEXT NOT NULL, object_id TEXT NOT NULL, day TEXT, start_time TEXT, end_time TEXT, payload TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(collection,object_id)); CREATE INDEX IF NOT EXISTS idx_documents_day ON documents(day); CREATE INDEX IF NOT EXISTS idx_documents_collection_day ON documents(collection,day); CREATE TABLE IF NOT EXISTS sync_state(collection TEXT PRIMARY KEY,last_sync TEXT,records INTEGER DEFAULT 0); CREATE TABLE IF NOT EXISTS webhook_events(event_id TEXT PRIMARY KEY,received_at TEXT,event_type TEXT,data_type TEXT,object_id TEXT,user_id TEXT,payload TEXT);'''); c.commit(); c.close()
 
 def upsert(collection:str,row:dict[str,Any]):
-    oid=str(row.get('id') or row.get('document_id') or row.get('timestamp') or hash(json.dumps(row,sort_keys=True)))
+    # Python's built-in hash() is randomized per-process for str/bytes (PYTHONHASHSEED),
+    # so it must not be used as a stable dedup key -- it would silently produce a
+    # different object_id for the same row on every restart, defeating the upsert
+    # and re-inserting duplicates for any row lacking id/document_id/timestamp.
+    fallback_id=hashlib.sha256(json.dumps(row,sort_keys=True).encode('utf-8')).hexdigest()
+    oid=str(row.get('id') or row.get('document_id') or row.get('timestamp') or fallback_id)
     day=row.get('day'); start=row.get('bedtime_start') or row.get('start_datetime') or row.get('timestamp'); end=row.get('bedtime_end') or row.get('end_datetime')
     c=conn(); c.execute('INSERT INTO documents(collection,object_id,day,start_time,end_time,payload,updated_at) VALUES(?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(collection,object_id) DO UPDATE SET day=excluded.day,start_time=excluded.start_time,end_time=excluded.end_time,payload=excluded.payload,updated_at=CURRENT_TIMESTAMP',(collection,oid,day,start,end,json.dumps(row,separators=(',',':')))); c.commit(); c.close()
 
