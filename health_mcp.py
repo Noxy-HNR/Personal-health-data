@@ -1,10 +1,19 @@
 """Unified local health MCP entrypoint.
-Loads the existing Oura tools and adds public medical-reference tools.
+Loads the Oura tools and adds public medical-reference tools.
 """
-from medical_tools import register_medical_tools
+import medical_tools
 from oura_service import HOST, PORT, mcp
 
-register_medical_tools(mcp)
+# Clinical Tables datasets have different native code fields. Let each dataset
+# use its documented default instead of forcing a generic 'code' field.
+def _clinical_search(path, query, max_results, sf, df, ef=None):
+    params = {"terms": query.strip(), "sf": sf, "df": df, "maxList": max(1, min(int(max_results), 100))}
+    if ef:
+        params["ef"] = ef
+    return medical_tools.get(f"{medical_tools.CT}/{path}/v3/search", params).json()
+
+medical_tools.ctsearch = _clinical_search
+medical_tools.register_medical_tools(mcp)
 
 
 def main() -> None:
