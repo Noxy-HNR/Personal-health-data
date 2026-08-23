@@ -3,6 +3,7 @@ import medical_tools
 from fda_tools import register_fda_tools
 from oura_service import HOST, PORT, mcp
 from analytics_tools import register_analytics_tools
+from health_analysis_tools import register_health_analysis_tools
 from sync_db import register_sync_tools, init_db
 from webhook_tools import register_webhook_tools
 from pubmed_tools import register_pubmed_tools
@@ -42,6 +43,7 @@ register_pubmed_tools(mcp, medical_tools)
 
 register_fda_tools(mcp)
 register_analytics_tools(mcp)
+register_health_analysis_tools(mcp)
 register_sync_tools(mcp)
 register_webhook_tools(mcp)
 
