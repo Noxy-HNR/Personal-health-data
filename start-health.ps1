@@ -12,6 +12,8 @@ $EnvFile = Join-Path $Root 'oura.env'
 $Example = Join-Path $Root 'oura.env.example'
 $Requirements = Join-Path $Root 'requirements.txt'
 $Service = Join-Path $Root 'health_mcp.py'
+$DataDir = Join-Path $Root 'data'
+$LogFile = Join-Path $DataDir 'server.log'
 $Port = 8765
 $HostAddress = '127.0.0.1'
 
@@ -161,19 +163,20 @@ function Run-Doctor {
     $checks += [pscustomobject]@{Name='Repository'; Ok=(Test-Path (Join-Path $Root '.git')); Detail=$Root}
     $checks += [pscustomobject]@{Name='Configuration'; Ok=(Test-Path $EnvFile); Detail=$EnvFile}
     $checks += [pscustomobject]@{Name='Requirements'; Ok=(Test-Path $Requirements); Detail='requirements.txt'}
-    $checks += [pscustomobject]@{Name='Data directory'; Ok=(Test-Path (Join-Path $Root 'data')); Detail='data/'}
+    $checks += [pscustomobject]@{Name='Data directory'; Ok=(Test-Path $DataDir); Detail='data/'}
     $health = Get-Health
     $checks += [pscustomobject]@{Name='MCP service'; Ok=($null -ne $health); Detail=$(if($health){'Running'}else{'Not running'})}
     $portOk = Test-PortAvailable
     $checks += [pscustomobject]@{Name='Configured port'; Ok=($portOk -or $null -ne $health); Detail="$HostAddress`:$Port"}
+    $logOk = Test-Path $LogFile
+    $checks += [pscustomobject]@{Name='Startup log'; Ok=$logOk; Detail=$LogFile}
     foreach ($c in $checks) {
         if ($c.Ok) { Write-Host ("[OK] {0,-22} {1}" -f $c.Name,$c.Detail) -ForegroundColor Green }
         else { Write-Host ("[!!] {0,-22} {1}" -f $c.Name,$c.Detail) -ForegroundColor Red }
     }
     if ($health) {
-        $authText = [string]$health.authorized
         $authColor = if ($health.authorized) { 'Green' } else { 'Yellow' }
-        Write-Host ("[OK] Oura authorization    {0}" -f $authText) -ForegroundColor $authColor
+        Write-Host ("[OK] Oura authorization    {0}" -f $health.authorized) -ForegroundColor $authColor
         Write-Host "MCP:    http://$HostAddress`:$Port/mcp" -ForegroundColor Cyan
         Write-Host "Health: http://$HostAddress`:$Port/health" -ForegroundColor Cyan
     }
@@ -208,7 +211,15 @@ $OAuthUrl = "http://$HostAddress`:$Port/oauth/start"
 
 if ($Mode -eq 'Status') {
     $s = Get-Health
-    if ($null -eq $s) { Write-Host "Service: STOPPED / unreachable ($HealthUrl)" -ForegroundColor Red; exit 1 }
+    if ($null -eq $s) {
+        Write-Host "Service: STOPPED / unreachable ($HealthUrl)" -ForegroundColor Red
+        if (Test-Path $LogFile) {
+            Write-Host ''
+            Write-Host 'Recent server log:' -ForegroundColor Yellow
+            Get-Content $LogFile -Tail 30 | Out-Host
+        }
+        exit 1
+    }
     Write-Host 'Service:    RUNNING' -ForegroundColor Green
     Write-Host "MCP:        $McpUrl" -ForegroundColor Cyan
     Write-Host "Authorized: $($s.authorized)" -ForegroundColor Cyan
@@ -231,18 +242,30 @@ if ($null -ne $current) {
 
 if (-not (Test-PortAvailable)) { throw "Port $Port is already in use. Change OURA_PORT in oura.env or use -Setup." }
 
+New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
+if (Test-Path $LogFile) { Remove-Item $LogFile -Force -ErrorAction SilentlyContinue }
 Write-Host "Starting Personal Health MCP on $HostAddress`:$Port..." -ForegroundColor Green
-$cmd = "Set-Location '$Root'; & '$Py' '$Service'"
-Start-Process powershell.exe -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-Command',$cmd) -WindowStyle Normal
+
+$process = Start-Process -FilePath $Py -ArgumentList @($Service) -WorkingDirectory $Root -WindowStyle Hidden -RedirectStandardOutput $LogFile -RedirectStandardError $LogFile -PassThru
 
 $healthy = $false
 for ($i = 0; $i -lt 45; $i++) {
     Start-Sleep -Seconds 1
+    if ($process.HasExited) { break }
     $s = Get-Health
     if ($null -ne $s -and $s.status -eq 'ok') { $healthy = $true; break }
 }
 if (-not $healthy) {
     Write-Host 'Service did not become healthy within 45 seconds.' -ForegroundColor Red
+    if ($process.HasExited) {
+        Write-Host "Python exited with code $($process.ExitCode)." -ForegroundColor Red
+    }
+    if (Test-Path $LogFile) {
+        Write-Host ''
+        Write-Host 'Server error/output:' -ForegroundColor Yellow
+        Get-Content $LogFile -Tail 60 | Out-Host
+    }
+    Write-Host ''
     Write-Host 'Run .\start-health.ps1 -Doctor for diagnostics.' -ForegroundColor Yellow
     exit 1
 }
