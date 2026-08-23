@@ -14,6 +14,7 @@ $Requirements = Join-Path $Root 'requirements.txt'
 $Service = Join-Path $Root 'health_mcp.py'
 $DataDir = Join-Path $Root 'data'
 $LogFile = Join-Path $DataDir 'server.log'
+$ErrorLogFile = Join-Path $DataDir 'server-error.log'
 $Port = 8765
 $HostAddress = '127.0.0.1'
 
@@ -218,6 +219,11 @@ if ($Mode -eq 'Status') {
             Write-Host 'Recent server log:' -ForegroundColor Yellow
             Get-Content $LogFile -Tail 30 | Out-Host
         }
+        if (Test-Path $ErrorLogFile) {
+            Write-Host ''
+            Write-Host 'Recent server errors:' -ForegroundColor Red
+            Get-Content $ErrorLogFile -Tail 30 | Out-Host
+        }
         exit 1
     }
     Write-Host 'Service:    RUNNING' -ForegroundColor Green
@@ -244,9 +250,10 @@ if (-not (Test-PortAvailable)) { throw "Port $Port is already in use. Change OUR
 
 New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
 if (Test-Path $LogFile) { Remove-Item $LogFile -Force -ErrorAction SilentlyContinue }
+if (Test-Path $ErrorLogFile) { Remove-Item $ErrorLogFile -Force -ErrorAction SilentlyContinue }
 Write-Host "Starting Personal Health MCP on $HostAddress`:$Port..." -ForegroundColor Green
 
-$process = Start-Process -FilePath $Py -ArgumentList @($Service) -WorkingDirectory $Root -WindowStyle Hidden -RedirectStandardOutput $LogFile -RedirectStandardError $LogFile -PassThru
+$process = Start-Process -FilePath $Py -ArgumentList @($Service) -WorkingDirectory $Root -WindowStyle Hidden -RedirectStandardOutput $LogFile -RedirectStandardError $ErrorLogFile -PassThru
 
 $healthy = $false
 for ($i = 0; $i -lt 45; $i++) {
@@ -262,8 +269,13 @@ if (-not $healthy) {
     }
     if (Test-Path $LogFile) {
         Write-Host ''
-        Write-Host 'Server error/output:' -ForegroundColor Yellow
+        Write-Host 'Server output:' -ForegroundColor Yellow
         Get-Content $LogFile -Tail 60 | Out-Host
+    }
+    if (Test-Path $ErrorLogFile) {
+        Write-Host ''
+        Write-Host 'Server errors:' -ForegroundColor Red
+        Get-Content $ErrorLogFile -Tail 60 | Out-Host
     }
     Write-Host ''
     Write-Host 'Run .\start-health.ps1 -Doctor for diagnostics.' -ForegroundColor Yellow
