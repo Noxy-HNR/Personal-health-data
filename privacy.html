@@ -10,17 +10,19 @@
     <h1>Privacy Policy</h1>
     <p><strong>Last updated: August 23, 2026</strong></p>
     <h2>Overview</h2>
-    <p>Personal Health Data is a personal-use application created to access the owner's Oura Ring data through the Oura API and provide deeper analysis using locally hosted AI models.</p>
+    <p>Personal Health Data is a personal-use application created to access and analyze the owner's data from Oura Ring through the Oura API. The intended analysis is performed by AI models hosted by the owner on local hardware.</p>
     <h2>Data accessed</h2>
-    <p>The application may access Oura data authorized by the account owner, including personal profile information and health, activity, sleep, heart-rate, workout, stress, blood oxygen, session, tag, and ring configuration data, depending on the OAuth scopes granted.</p>
+    <p>The application may access Oura data authorized by the account owner, including personal information and health, activity, sleep, heart-rate, workout, stress, blood oxygen, session, tag, ring configuration, resilience, cardiovascular-age, VO2 max, and related data available through the authorized Oura API scopes.</p>
     <h2>Use of data</h2>
-    <p>Oura data is used solely for the owner's personal viewing, analysis, correlation, and related application functionality. The intended AI processing occurs on the owner's locally hosted models and local computer infrastructure.</p>
+    <p>Oura data is used solely for the owner's personal viewing, correlation, trend analysis, and AI-assisted analysis. The application does not sell personal data or use it for advertising.</p>
+    <h2>Local processing</h2>
+    <p>The local Oura service binds to the owner's local machine and is designed to pass Oura data to the owner's locally hosted AI environment. The application does not intentionally transmit Oura data to a hosted AI provider or other third party as part of its normal operation.</p>
     <h2>Sharing</h2>
-    <p>The application does not sell Oura data or use it for advertising. The local Oura service is designed to bind to the local computer and does not intentionally transmit Oura data to a third-party AI service.</p>
-    <h2>Storage and retention</h2>
-    <p>OAuth credentials and tokens used by the local service are stored on the owner's computer. The repository excludes the local credential and token files from version control. The owner controls locally stored health data and may delete it at any time.</p>
-    <h2>Third-party service</h2>
-    <p>Oura Cloud remains the source of the Oura data accessed by this application. Oura's own privacy practices and terms govern Oura's processing of data within its services.</p>
+    <p>Personal Oura data is not intentionally shared with third parties. If the owner independently configures another service to receive data from the local AI environment, that separate service is outside the normal operation of this application.</p>
+    <h2>Credentials and tokens</h2>
+    <p>The Oura client credentials and OAuth tokens are stored locally on the owner's machine. They are excluded from the application's public Git repository.</p>
+    <h2>Data retention and deletion</h2>
+    <p>The owner controls the application and may delete locally stored OAuth tokens and application data at any time. The application's disconnect function removes locally stored OAuth tokens. Oura authorization may also be revoked through Oura.</p>
     <h2>Contact</h2>
     <p>For questions about this application or its data practices, contact the application owner using the contact information associated with the Oura API application.</p>
     <p><a href="index.html">Back to application</a></p>
