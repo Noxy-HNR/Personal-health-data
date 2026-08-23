@@ -1,150 +1,110 @@
 # Personal Health MCP
 
-A local-first MCP server for connecting personal health data to AI assistants. Oura is the primary personal-data integration, with analytics and medical/reference integrations designed for extensibility.
+A local-first MCP server for connecting personal health data to AI assistants. Oura is the primary personal-data integration, with local analytics and public medical/reference sources alongside it.
 
-The project is intended for personal analytics and research. Private credentials, OAuth tokens, and personal health records are stored locally by default.
-
-## Highlights
-
-- Oura API V2 OAuth 2.0
-- Automatic token refresh
-- Paginated Oura collection access
-- Local health history and analytics
-- Personal baselines, trends, anomalies, correlations, sleep debt, and regularity analysis
-- Compact health snapshots designed for smaller local AI models
-- Medical/reference integrations including PubMed/NCBI, MedlinePlus, ICD terminology, LOINC, RxTerms, NPI, CMS, and FDA/openFDA where supported
-- MCP Streamable HTTP
-- Configurable bind address and port
-- One PowerShell launcher for setup, start, update, status, diagnostics, and stop
-- Automatic Python/Git installation through Windows Package Manager when available
-- Optional webhook architecture
-
-## Windows quick start
-
-1. Clone or download this repository.
-2. Open PowerShell in the repository directory.
-3. Run:
+## Quick start — Windows
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 .\start-health.ps1
 ```
 
-The launcher checks prerequisites, can install Git and Python automatically through `winget`, creates a virtual environment, installs dependencies, creates local configuration, starts the MCP server, and opens Oura OAuth when needed.
+The launcher is the only script most users normally need. It can install missing prerequisites, create the virtual environment, install dependencies, create configuration, guide Oura setup, start the service, and diagnose problems.
 
-### Daily commands
+Useful commands:
 
 ```powershell
-.\start-health.ps1              # Start
-.\start-health.ps1 -Setup       # Configure again
-.\start-health.ps1 -Update      # Update code/dependencies
-.\start-health.ps1 -Status      # Check status
-.\start-health.ps1 -Doctor      # Diagnose installation
-.\start-health.ps1 -Stop        # Stop
+.\start-health.ps1
+.\start-health.ps1 -Setup
+.\start-health.ps1 -Update
+.\start-health.ps1 -Status
+.\start-health.ps1 -Doctor
+.\start-health.ps1 -Stop
 ```
 
-The launcher is location-independent and does not assume `C:\AI` or another fixed path. The MCP URL is copied to the clipboard when the service starts.
+## Features
+
+- Oura API V2 OAuth 2.0 integration and token refresh
+- Read-only Oura data access with pagination and bounded time-series queries
+- Local SQLite health history/state
+- Personal baselines, rolling trends, anomalies, correlations, period comparisons, sleep debt and sleep regularity
+- Compact health snapshots designed for AI context efficiency
+- Public medical/reference integrations such as PubMed/NCBI, MedlinePlus, ICD terminology, LOINC, RxTerms, NPI, CMS Coverage and FDA/openFDA where supported
+- MCP Streamable HTTP
+- Configurable local host/port
+- Optional Oura webhooks for deployments with public HTTPS ingress
+- Single Windows launcher for setup, update, status, diagnostics and stop
 
 ## Configuration
 
-The launcher creates `oura.env` automatically. The example contains:
+The launcher creates `oura.env` automatically from `oura.env.example` when needed.
 
 ```env
-OURA_CLIENT_ID=PASTE_YOUR_OURA_CLIENT_ID_HERE
-OURA_CLIENT_SECRET=PASTE_YOUR_OURA_CLIENT_SECRET_HERE
+OURA_CLIENT_ID=
+OURA_CLIENT_SECRET=
 OURA_REDIRECT_URI=http://127.0.0.1:8765/oauth/callback
 OURA_SCOPES=email personal daily heartrate workout tag session spo2Daily
 OURA_HOST=127.0.0.1
 OURA_PORT=8765
 OURA_TOKEN_FILE=data/tokens.json
+
+# Optional NCBI settings
+# NCBI_EMAIL=you@example.com
+# NCBI_API_KEY=
 ```
 
-Change `OURA_PORT` to an unused local port if needed. The launcher uses the configured port for the MCP service and health checks. The Oura Redirect URI must exactly match an allowed URI in your Oura developer application.
-
-Keep `OURA_HOST=127.0.0.1` for normal personal use. Port 8000 is not used or reserved by this project.
-
-Optional NCBI configuration:
-
-```env
-NCBI_EMAIL=you@example.com
-NCBI_API_KEY=your_key
-```
-
-An NCBI API key is optional.
-
-## Oura setup
-
-Create an Oura API application and add the exact local callback shown in `oura.env`. On first start, the launcher opens the browser authorization flow automatically. Tokens are stored locally and excluded from Git.
+Keep `OURA_HOST=127.0.0.1` for local-only operation. Change `OURA_PORT` if the default is occupied. If you change the port, also change `OURA_REDIRECT_URI` and the matching Oura application callback. Port 8000 is not used by this project.
 
 ## MCP endpoint
 
-Default MCP endpoint:
+Default endpoint: `http://127.0.0.1:8765/mcp`
 
-```text
-http://127.0.0.1:8765/mcp
-```
-
-Default health endpoint:
-
-```text
-http://127.0.0.1:8765/health
-```
+Default health check: `http://127.0.0.1:8765/health`
 
 Use the configured host and port if changed.
 
-## Architecture
+## Oura setup
 
-```text
-Oura Cloud
-   |
-   | OAuth / API V2
-   v
-Local Personal Health MCP
-   |
-   +--> local state/database
-   +--> analytics
-   +--> medical/reference APIs
-   |
-   | MCP Streamable HTTP
-   v
-cptr / Open WebUI / other MCP clients
-   |
-   v
-Local or remote AI model
-```
+Create an Oura API application and add the exact local redirect URI shown in `oura.env`. On first launch, the launcher guides you through authorization and stores OAuth tokens locally. Never commit credentials, tokens, databases or personal health data.
 
 ## Analytics
 
-The analytics layer is intended to turn raw health measurements into model-friendly information. It can support personal baselines, rolling trends, anomaly detection, period comparisons, correlations, tag/condition comparisons, sleep debt, sleep regularity, and longitudinal summaries.
+The analytics layer performs calculations locally so AI models receive useful derived information rather than large raw datasets. It supports personal baselines, trends, anomaly detection, correlations, tagged-condition comparisons, sleep debt, sleep regularity and longitudinal analysis.
 
-## Medical/reference integrations
+## Medical/reference data
 
-Public reference integrations can include PubMed/NCBI, MedlinePlus, ICD-10/ICD-11 terminology, LOINC, RxTerms, NPI Registry, CMS Coverage, and FDA/openFDA. These sources are external services and their own terms and availability apply.
+External medical/reference sources are queried on demand and are not stored as a replacement for personal records. PubMed/NCBI can optionally use an API key for higher request limits. External sources remain subject to their own terms and licenses.
 
 ## Webhooks
 
-Webhooks are optional. The local service works without public ingress. If enabled, Oura Cloud needs a public HTTPS endpoint. Use a secure tunnel/reverse proxy and expose only the intended webhook route; do not expose the MCP endpoint directly to the Internet.
+Webhooks are optional. The local system works without them. If enabled, Oura Cloud requires a publicly reachable HTTPS endpoint. Use a secure tunnel or reverse proxy and expose only the webhook route; do not expose the MCP endpoint directly to the Internet.
 
-See `WEBHOOKS.md` for the planned deployment architecture.
+## Repository layout
 
-## Privacy and security
+The project intentionally keeps user-facing documentation compact while retaining separate code modules where that improves maintainability.
 
-This is a local-first application and does not provide a central project-hosted health-data service. Do not commit credentials, OAuth tokens, databases, or personal health data.
-
-Read `PRIVACY.md` for data-flow information and `TERMS.md` for software terms and the medical-use disclaimer. `SECURITY.md` contains additional credential and network guidance.
-
-## Documentation
-
-- `CONFIGURATION.md` — configuration reference
-- `INSTALLATION.md` — installation and troubleshooting
-- `MCP_TOOLS.md` — MCP tools/resources
-- `INTEGRATIONS.md` — health and medical integrations
-- `WEBHOOKS.md` — optional webhook deployment
+- `start-health.ps1` — installer, configurator, launcher and diagnostics
+- `health_mcp.py` — MCP service entry point
+- `oura_service.py` — Oura API/authentication layer
+- `analytics.py` / `analytics_tools.py` — local analytics
+- `medical_tools.py` and source-specific modules — public reference integrations
+- `oura.env.example` — safe configuration template
+- `PRIVACY.md` — privacy policy
+- `TERMS.md` — terms of use
 - `SECURITY.md` — security guidance
-- `PRIVACY.md` — privacy and data-flow information
-- `TERMS.md` — terms and disclaimer
-- `DEVELOPMENT.md` — development notes
 
-## License and third parties
+Runtime files such as `.venv`, `oura.env`, tokens and local databases are excluded from Git.
 
-See the repository license file if present. Third-party APIs, datasets, libraries, and services remain subject to their own licenses, terms, attribution requirements, and usage limits.
+## Privacy and medical disclaimer
+
+This software is designed to keep personal credentials, tokens, databases and health records on the user's computer by default. It does not provide medical diagnosis or treatment. AI-generated analysis is informational and should not be treated as professional medical advice.
+
+See `PRIVACY.md`, `TERMS.md`, and `SECURITY.md` for the full policies.
+
+## Development
+
+Developers can use the same launcher with `-Setup`, `-Update` and `-Doctor`. Python modules are intentionally kept separate where that improves maintainability.
+
+## License
+
+See the repository license. Oura, NCBI, FDA and other external services remain subject to their respective terms and agreements.
