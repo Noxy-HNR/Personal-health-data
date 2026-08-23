@@ -5,6 +5,7 @@ from oura_service import HOST, PORT, mcp
 from analytics_tools import register_analytics_tools
 from sync_db import register_sync_tools, init_db
 from webhook_tools import register_webhook_tools
+from pubmed_tools import register_pubmed_tools
 
 # Harden Oura OAuth before any tools can make API requests. Oura refresh tokens
 # are single-use, so concurrent refreshes can otherwise invalidate each other.
@@ -28,13 +29,24 @@ def _clinical_search(path, query, max_results, sf, df, ef=None):
 # Clinical Terminology server searches are exposed through medical_tools.
 medical_tools.ctsearch = _clinical_search
 medical_tools.register_medical_tools(mcp)
+
+# Replace the metadata-only PubMed search with the compact evidence endpoint.
+# The old endpoint returned citation metadata but no abstract, which encouraged
+# the local model to invent one-sentence summaries. The replacement fetches the
+# abstracts server-side and returns only an extractive sentence plus citation data.
+try:
+    mcp.remove_tool("search_pubmed")
+except Exception:
+    pass
+register_pubmed_tools(mcp, medical_tools)
+
 register_fda_tools(mcp)
 register_analytics_tools(mcp)
 register_sync_tools(mcp)
 register_webhook_tools(mcp)
 
-# Install the compact health snapshot last so the established get_health_snapshot
-# name remains available while its response is bounded for LLM context windows.
+# Install compact health snapshot tools last so the established broad-tool names
+# remain available while their responses stay bounded for local model context.
 import compact_tools  # noqa: F401,E402
 
 init_db()
