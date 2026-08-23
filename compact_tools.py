@@ -1,6 +1,6 @@
 """Small server-side Oura analytics endpoints.
 
-The model should receive aggregates, not raw Oura collections.  All collection
+The model should receive aggregates, not raw Oura collections. All collection
 fetching, date alignment, filtering, and arithmetic happen in this module.
 """
 from __future__ import annotations
@@ -47,17 +47,12 @@ def _pick(record: dict[str, Any], allowed: set[str]) -> dict[str, Any]:
 
 
 def _fetch_compact(start: str, end: str) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
-    """Fetch only the small daily fields needed for analytics, in parallel."""
+    """Fetch only the daily fields needed for analytics, in parallel."""
     by_day: dict[str, dict[str, Any]] = {}
     errors: dict[str, str] = {}
 
     def fetch(name: str):
-        return name, _fetch_collection(
-            name,
-            start_date=start,
-            end_date=end,
-            max_records=(date_count := 100),
-        )
+        return name, _fetch_collection(name, start_date=start, end_date=end, max_records=100)
 
     with ThreadPoolExecutor(max_workers=len(_COLLECTION_FIELDS)) as pool:
         futures = {pool.submit(fetch, name): name for name in _COLLECTION_FIELDS}
@@ -119,7 +114,6 @@ def _build_analysis(days: int, include_recent: int = 0) -> dict[str, Any]:
     recent: list[dict[str, Any]] = []
     if include_recent:
         for day, row in reversed(ordered[-include_recent:]):
-            # Deliberately return only the same compact fields already selected above.
             recent.append({"date": day, **row})
 
     return {
