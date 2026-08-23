@@ -1,0 +1,7 @@
+# Local Oura credentials and tokens
+oura.env
+data/
+.venv/
+__pycache__/
+*.pyc
+*.log
