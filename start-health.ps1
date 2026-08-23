@@ -6,16 +6,26 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $RepoUrl = 'https://github.com/Noxy-HNR/Personal-health-data.git'
-$Root = 'C:\AI\Personal-health-data'
+$Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Venv = Join-Path $Root '.venv'
 $Py = Join-Path $Venv 'Scripts\python.exe'
 $EnvFile = Join-Path $Root 'oura.env'
 $Example = Join-Path $Root 'oura.env.example'
 $Service = Join-Path $Root 'health_mcp.py'
 $Port = 8765
-$HealthUrl = "http://127.0.0.1:$Port/health"
-$McpUrl = "http://127.0.0.1:$Port/mcp"
-$OAuthUrl = "http://127.0.0.1:$Port/oauth/start"
+$HostAddress = '127.0.0.1'
+
+function Load-ServerConfig {
+    if (Test-Path $EnvFile) {
+        foreach ($line in Get-Content $EnvFile) {
+            if ($line -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$') {
+                $name = $Matches[1]; $value = $Matches[2].Trim().Trim('"').Trim("'")
+                if ($name -eq 'OURA_PORT' -and $value -match '^\d+$') { $script:Port = [int]$value }
+                if ($name -eq 'OURA_HOST' -and $value) { $script:HostAddress = $value }
+            }
+        }
+    }
+}
 
 function Write-Header($text) {
     Write-Host ''
@@ -28,8 +38,7 @@ function Write-Header($text) {
 function Ensure-Repo {
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) { throw 'Git is required. Install Git for Windows and run this script again.' }
     if (-not (Test-Path (Join-Path $Root '.git'))) {
-        New-Item -ItemType Directory -Force -Path (Split-Path $Root) | Out-Null
-        Write-Host 'Downloading Personal Health MCP...' -ForegroundColor Yellow
+        Write-Host "Downloading Personal Health MCP to $Root..." -ForegroundColor Yellow
         git clone $RepoUrl $Root | Out-Host
     } elseif ($Mode -in @('Start','Setup','Update')) {
         Write-Host 'Updating Personal Health MCP...' -ForegroundColor Yellow
@@ -55,6 +64,7 @@ function Ensure-Config {
         }
     }
     try { icacls $EnvFile /inheritance:r /grant:r "$env:USERNAME:(R,W)" | Out-Null } catch { Write-Host 'Could not tighten credential-file ACL; continuing.' -ForegroundColor DarkYellow }
+    Load-ServerConfig
 }
 
 function Ensure-Python {
@@ -69,36 +79,43 @@ function Ensure-Python {
 }
 
 function Get-Health {
-    try { return Invoke-RestMethod -Uri $HealthUrl -TimeoutSec 3 } catch { return $null }
+    try { return Invoke-RestMethod -Uri "http://$HostAddress`:$Port/health" -TimeoutSec 3 } catch { return $null }
 }
 
-function Stop-Service {
+function Stop-HealthService {
     $procs = Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*$Service*" }
     foreach ($p in $procs) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }
     Write-Host 'Personal Health MCP stopped.' -ForegroundColor Green
 }
 
+if (-not (Test-Path $Root)) { New-Item -ItemType Directory -Force -Path $Root | Out-Null }
+
 if ($Mode -eq 'Stop') {
     Write-Header 'Stop'
-    Stop-Service
+    Load-ServerConfig
+    Stop-HealthService
     exit 0
 }
+
+Ensure-Repo
+Ensure-Config
+Ensure-Python
+
+$HealthUrl = "http://$HostAddress`:$Port/health"
+$McpUrl = "http://$HostAddress`:$Port/mcp"
+$OAuthUrl = "http://$HostAddress`:$Port/oauth/start"
 
 if ($Mode -eq 'Status') {
     Write-Header 'Status'
     $s = Get-Health
-    if ($null -eq $s) { Write-Host 'Service: STOPPED / unreachable' -ForegroundColor Red; exit 1 }
-    Write-Host "Service:    RUNNING" -ForegroundColor Green
+    if ($null -eq $s) { Write-Host "Service: STOPPED / unreachable ($HealthUrl)" -ForegroundColor Red; exit 1 }
+    Write-Host 'Service:    RUNNING' -ForegroundColor Green
     Write-Host "MCP:        $McpUrl" -ForegroundColor Cyan
     Write-Host "Authorized: $($s.authorized)" -ForegroundColor Cyan
-    Write-Host "Health:     $HealthUrl" -ForegroundColor Cyan
+    Write-Host "Host:       $HostAddress" -ForegroundColor Cyan
+    Write-Host "Port:       $Port" -ForegroundColor Cyan
     exit 0
 }
-
-Write-Header 'Setup' 
-Ensure-Repo
-Ensure-Config
-Ensure-Python
 
 if ($Mode -eq 'Update') {
     Write-Host 'Update complete. Service was not restarted.' -ForegroundColor Green
@@ -107,12 +124,12 @@ if ($Mode -eq 'Update') {
 
 $current = Get-Health
 if ($null -ne $current) {
-    Write-Host "Personal Health MCP is already running on port $Port." -ForegroundColor Green
+    Write-Host "Personal Health MCP is already running on $HostAddress`:$Port." -ForegroundColor Green
     if (-not $current.authorized) { Start-Process $OAuthUrl }
     exit 0
 }
 
-Write-Host "Starting Personal Health MCP on 127.0.0.1:$Port..." -ForegroundColor Green
+Write-Host "Starting Personal Health MCP on $HostAddress`:$Port..." -ForegroundColor Green
 $cmd = "Set-Location '$Root'; & '$Py' '$Service'"
 Start-Process powershell.exe -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-Command',$cmd) -WindowStyle Normal
 
@@ -134,7 +151,7 @@ Write-Host 'Personal Health MCP is running.' -ForegroundColor Green
 Write-Host "MCP:     $McpUrl" -ForegroundColor Cyan
 Write-Host "Health:  $HealthUrl" -ForegroundColor Cyan
 Write-Host "OAuth:   $OAuthUrl" -ForegroundColor Cyan
-Write-Host 'Webhook: http://127.0.0.1:8765/oura-webhook' -ForegroundColor Cyan
+Write-Host "Webhook: $HostAddress`:$Port/oura-webhook (public HTTPS required for Oura Cloud)" -ForegroundColor Cyan
 
 if (-not $s.authorized) {
     Write-Host 'Oura authorization required. Opening browser...' -ForegroundColor Yellow
@@ -144,7 +161,7 @@ if (-not $s.authorized) {
 }
 
 Write-Host ''
-Write-Host 'Connect cptr/Open WebUI to:' -ForegroundColor Magenta
+Write-Host 'Connect your MCP client to:' -ForegroundColor Magenta
 Write-Host $McpUrl -ForegroundColor White
 Write-Host ''
 Write-Host 'Commands:' -ForegroundColor DarkCyan
