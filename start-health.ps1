@@ -1,7 +1,12 @@
 [CmdletBinding()]
 param(
     [ValidateSet('Start','Setup','Update','Stop','Status','Doctor')]
-    [string]$Mode = 'Start'
+    [string]$Mode,
+    [switch]$Setup,
+    [switch]$Update,
+    [switch]$Stop,
+    [switch]$Status,
+    [switch]$Doctor
 )
 
 $ErrorActionPreference = 'Stop'
@@ -17,6 +22,16 @@ $LogFile = Join-Path $DataDir 'server.log'
 $ErrorLogFile = Join-Path $DataDir 'server-error.log'
 $Port = 8765
 $HostAddress = '127.0.0.1'
+
+$requested = @()
+if ($Setup) { $requested += 'Setup' }
+if ($Update) { $requested += 'Update' }
+if ($Stop) { $requested += 'Stop' }
+if ($Status) { $requested += 'Status' }
+if ($Doctor) { $requested += 'Doctor' }
+if ($Mode) { $requested += $Mode }
+if ($requested.Count -gt 1) { throw 'Choose only one launcher mode.' }
+if ($requested.Count -eq 1) { $Mode = $requested[0] } else { $Mode = 'Start' }
 
 function Write-Header($text) {
     Write-Host ''
@@ -135,7 +150,8 @@ function Ensure-PythonEnv {
     }
     Write-Host 'Installing/updating dependencies...' -ForegroundColor Yellow
     & $Py -m pip install --upgrade pip --disable-pip-version-check | Out-Host
-    & $Py -m pip install -r $Requirements --disable-pip-version-check | Out-Host
+    & $Py -m pip install -r $Requirements --upgrade --disable-pip-version-check | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw 'Python dependency installation failed.' }
 }
 
 function Get-Health {
@@ -165,6 +181,12 @@ function Run-Doctor {
     $checks += [pscustomobject]@{Name='Configuration'; Ok=(Test-Path $EnvFile); Detail=$EnvFile}
     $checks += [pscustomobject]@{Name='Requirements'; Ok=(Test-Path $Requirements); Detail='requirements.txt'}
     $checks += [pscustomobject]@{Name='Data directory'; Ok=(Test-Path $DataDir); Detail='data/'}
+    $mcpImport = $false
+    if (Test-Path $Py) {
+        & $Py -c "from mcp.server.fastmcp import FastMCP; print('ok')" 2>$null | Out-Null
+        $mcpImport = ($LASTEXITCODE -eq 0)
+    }
+    $checks += [pscustomobject]@{Name='MCP SDK'; Ok=$mcpImport; Detail='Compatible mcp.server.fastmcp import'}
     $health = Get-Health
     $checks += [pscustomobject]@{Name='MCP service'; Ok=($null -ne $health); Detail=$(if($health){'Running'}else{'Not running'})}
     $portOk = Test-PortAvailable
@@ -264,21 +286,10 @@ for ($i = 0; $i -lt 45; $i++) {
 }
 if (-not $healthy) {
     Write-Host 'Service did not become healthy within 45 seconds.' -ForegroundColor Red
-    if ($process.HasExited) {
-        Write-Host "Python exited with code $($process.ExitCode)." -ForegroundColor Red
-    }
-    if (Test-Path $LogFile) {
-        Write-Host ''
-        Write-Host 'Server output:' -ForegroundColor Yellow
-        Get-Content $LogFile -Tail 60 | Out-Host
-    }
-    if (Test-Path $ErrorLogFile) {
-        Write-Host ''
-        Write-Host 'Server errors:' -ForegroundColor Red
-        Get-Content $ErrorLogFile -Tail 60 | Out-Host
-    }
-    Write-Host ''
-    Write-Host 'Run .\start-health.ps1 -Doctor for diagnostics.' -ForegroundColor Yellow
+    if ($process.HasExited) { Write-Host "Python exited with code $($process.ExitCode)." -ForegroundColor Red }
+    if (Test-Path $LogFile) { Write-Host ''; Write-Host 'Server output:' -ForegroundColor Yellow; Get-Content $LogFile -Tail 60 | Out-Host }
+    if (Test-Path $ErrorLogFile) { Write-Host ''; Write-Host 'Server errors:' -ForegroundColor Red; Get-Content $ErrorLogFile -Tail 60 | Out-Host }
+    Write-Host ''; Write-Host 'Run .\start-health.ps1 -Doctor for diagnostics.' -ForegroundColor Yellow
     exit 1
 }
 
