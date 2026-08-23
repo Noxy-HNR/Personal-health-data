@@ -1,6 +1,6 @@
 # Configuration
 
-The only normal configuration file is `oura.env`. The launcher creates it automatically from `oura.env.example` on first run.
+The normal configuration file is `oura.env`. The unified `start-health.ps1` launcher creates it automatically on first run and guides you through setup.
 
 ## Server
 
@@ -9,7 +9,7 @@ OURA_HOST=127.0.0.1
 OURA_PORT=8765
 ```
 
-`OURA_PORT` may be changed to any unused local TCP port. If it is changed, update the Oura redirect URI too.
+`OURA_PORT` may be changed to any unused local TCP port. The launcher uses the configured port for health checks and displayed MCP URLs. If the Oura OAuth redirect URI uses the local port, it must exactly match an allowed URI in the Oura developer application.
 
 ## Oura OAuth
 
@@ -38,6 +38,19 @@ NCBI_API_KEY=
 ```
 
 An NCBI key is optional.
+
+## Launcher modes
+
+```powershell
+.\start-health.ps1
+.\start-health.ps1 -Setup
+.\start-health.ps1 -Update
+.\start-health.ps1 -Status
+.\start-health.ps1 -Doctor
+.\start-health.ps1 -Stop
+```
+
+`-Doctor` performs a deeper diagnostic of Python, dependencies, configuration, database, Oura connectivity, port availability, and the MCP endpoint.
 
 ## Environment portability
 
