@@ -2,6 +2,14 @@
 
 A local-first MCP server for connecting personal health data to AI assistants. Oura is the primary personal-data integration, with local analytics and public medical/reference sources alongside it.
 
+## Quick navigation
+
+- [Start the service](#quick-start--windows)
+- [Configure Oura and local settings](#configuration)
+- [Connect an MCP client](#mcp-endpoint)
+- [Review privacy and medical-use boundaries](#privacy-and-medical-disclaimer)
+- [Run the development checks](#development)
+
 ## Quick start — Windows
 
 ```powershell
